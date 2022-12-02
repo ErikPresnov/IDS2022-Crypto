@@ -1,5 +1,6 @@
 import pandas as pd
-
+import numpy as np
+from sklearn.linear_model import Lasso
 
 # Method to calculate MA (moving average) -> mean of N prices
 def calc_MA(df, n):
@@ -13,8 +14,22 @@ def calc_MA(df, n):
     return MA
 
 
+# Method to calculate Bollinber Bands -> MA +- 2*STD
 def calc_BB(df):
-    pass
+    upperBand = []
+    lowerBand = []
+    MA20 = df["MA20"]
+    STD20 = []
+    prices = df["close"]
+    for i in range(len(prices)):
+        if i + 20 < len(prices):
+            STD20.append(prices[i:i + 20].std())
+        else:
+            STD20.append(prices[i:].std())
+        upperBand.append(MA20[i] + 2 * STD20[i])
+        lowerBand.append(MA20[i] - 2 * STD20[i])
+
+    return upperBand, lowerBand
 
 
 def calc_RSI(df, periods=14):
@@ -78,10 +93,29 @@ def calc_RSI(df, periods=14):
 if __name__ == "__main__":
     daily = pd.read_csv("BTC-Daily.csv")
     daily = daily.drop("unix", axis=1)
+    daily = daily.drop("Volume USD", axis=1)
+    daily = daily.drop("symbol", axis=1)
+    dates = daily['date']
+    daily = daily.drop("date", axis=1)
     daily["MA200"] = calc_MA(daily, 200)
     daily["MA100"] = calc_MA(daily, 100)
     daily["MA50"] = calc_MA(daily, 50)
-    # print(daily.head(20))
-    print(calc_RSI(daily))
-    print(daily['close'])
-    print(daily.head(10) )
+    daily["MA20"] = calc_MA(daily, 20)
+    daily["BBUpper"], daily["BBLower"] = calc_BB(daily)
+    daily = daily[0:daily.shape[0] - 2]
+    Y = daily["close"]
+    X = daily.drop("close", axis=1)
+
+    testX, trainX = X[0:300], X[300:]
+    testY, trainY = Y[0:300], Y[300:]
+
+    LassoReg = Lasso(alpha=1.0).fit(trainX, trainY)
+    predicted = LassoReg.predict(testX)
+    correct = 0
+    error = 0.01
+    for i,pred in enumerate(predicted):
+        if testY[i]*(1 + error) > pred > testY[i]*(1 - error):
+            correct += 1
+
+    print(correct/len(predicted))
+
